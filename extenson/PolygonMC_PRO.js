@@ -1,11 +1,11 @@
 (function(Scratch) {
     'use strict';
 
-    // ------------------------------------------------------------
-    // Safe expression parser (no eval, no new Function)
-    // Supports: + - * / ^ ( ) numbers, x y z, and math functions
-    // ------------------------------------------------------------
-    class ExprParser {
+    // ============================================================
+    // 安全表达式解析器 (不使用 new Function 或 eval)
+    // 支持 + - * / ^ ( ) 数字, x, y, z, 以及常见数学函数
+    // ============================================================
+    class SafeParser {
         constructor(expr) {
             this.expr = expr;
             this.tokens = [];
@@ -15,28 +15,26 @@
 
         tokenize() {
             const regex = /(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[a-zA-Z_]+|[+\-*/^()])/g;
-            let m;
-            while ((m = regex.exec(this.expr)) !== null) {
-                let token = m[1];
+            let match;
+            while ((match = regex.exec(this.expr)) !== null) {
+                let token = match[1];
                 if (/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) {
-                    this.tokens.push({ type: 'number', value: parseFloat(token) });
+                    this.tokens.push({ type: 'num', val: parseFloat(token) });
                 } else if (/^[a-zA-Z_]+$/.test(token)) {
-                    this.tokens.push({ type: 'identifier', value: token });
+                    this.tokens.push({ type: 'id', val: token });
                 } else {
-                    this.tokens.push({ type: 'operator', value: token });
+                    this.tokens.push({ type: 'op', val: token });
                 }
             }
         }
 
-        peek() {
-            return this.pos < this.tokens.length ? this.tokens[this.pos] : null;
-        }
+        peek() { return this.tokens[this.pos] || null; }
 
-        consume(expectedType, expectedValue) {
+        consume(type, val) {
             const tok = this.peek();
             if (!tok) throw new Error('Unexpected end');
-            if (tok.type !== expectedType) throw new Error(`Expected ${expectedType}`);
-            if (expectedValue !== undefined && tok.value !== expectedValue) throw new Error(`Expected '${expectedValue}'`);
+            if (tok.type !== type) throw new Error(`Expected ${type}`);
+            if (val !== undefined && tok.val !== val) throw new Error(`Expected '${val}'`);
             this.pos++;
             return tok;
         }
@@ -48,8 +46,8 @@
                 const result = this.parseExpr();
                 if (this.peek() !== null) throw new Error('Extra tokens');
                 return result;
-            } catch (e) {
-                return 1; // fallback on error
+            } catch(e) {
+                return 1; // 表达式错误时返回 1（表示在表面外部）
             }
         }
 
@@ -57,10 +55,10 @@
             let left = this.parseTerm();
             while (true) {
                 const op = this.peek();
-                if (op && op.type === 'operator' && (op.value === '+' || op.value === '-')) {
-                    this.consume('operator', op.value);
+                if (op && op.type === 'op' && (op.val === '+' || op.val === '-')) {
+                    this.consume('op', op.val);
                     const right = this.parseTerm();
-                    left = op.value === '+' ? left + right : left - right;
+                    left = op.val === '+' ? left + right : left - right;
                 } else break;
             }
             return left;
@@ -70,10 +68,10 @@
             let left = this.parseFactor();
             while (true) {
                 const op = this.peek();
-                if (op && op.type === 'operator' && (op.value === '*' || op.value === '/')) {
-                    this.consume('operator', op.value);
+                if (op && op.type === 'op' && (op.val === '*' || op.val === '/')) {
+                    this.consume('op', op.val);
                     const right = this.parseFactor();
-                    left = op.value === '*' ? left * right : left / right;
+                    left = op.val === '*' ? left * right : left / right;
                 } else break;
             }
             return left;
@@ -82,43 +80,43 @@
         parseFactor() {
             const tok = this.peek();
             if (!tok) throw new Error('Unexpected end');
-            if (tok.type === 'number') {
-                this.consume('number');
-                return tok.value;
+            if (tok.type === 'num') {
+                this.consume('num');
+                return tok.val;
             }
-            if (tok.type === 'identifier') {
-                const name = tok.value;
-                this.consume('identifier');
-                // function call?
+            if (tok.type === 'id') {
+                const name = tok.val;
+                this.consume('id');
+                // 函数调用？
                 const next = this.peek();
-                if (next && next.type === 'operator' && next.value === '(') {
+                if (next && next.type === 'op' && next.val === '(') {
                     return this.parseFunction(name);
                 }
-                // variable
+                // 变量
                 if (name === 'x') return this.x;
                 if (name === 'y') return this.y;
                 if (name === 'z') return this.z;
                 if (name === 'pi') return Math.PI;
                 if (name === 'e') return Math.E;
-                throw new Error(`Unknown variable: ${name}`);
+                throw new Error(`Unknown identifier: ${name}`);
             }
-            if (tok.type === 'operator' && tok.value === '(') {
-                this.consume('operator', '(');
+            if (tok.type === 'op' && tok.val === '(') {
+                this.consume('op', '(');
                 const expr = this.parseExpr();
-                this.consume('operator', ')');
+                this.consume('op', ')');
                 return expr;
             }
-            if (tok.type === 'operator' && tok.value === '-') {
-                this.consume('operator', '-');
+            if (tok.type === 'op' && tok.val === '-') {
+                this.consume('op', '-');
                 return -this.parseFactor();
             }
-            throw new Error(`Unexpected token: ${tok.value}`);
+            throw new Error(`Unexpected token: ${tok.val}`);
         }
 
         parseFunction(name) {
-            this.consume('operator', '(');
+            this.consume('op', '(');
             const arg = this.parseExpr();
-            this.consume('operator', ')');
+            this.consume('op', ')');
             switch (name) {
                 case 'sin': return Math.sin(arg);
                 case 'cos': return Math.cos(arg);
@@ -138,13 +136,13 @@
         }
     }
 
-    // ------------------------------------------------------------
-    // Main Extension Class (same as yours, but using safe parser)
-    // ------------------------------------------------------------
+    // ============================================================
+    // 主扩展类（行进立方体算法）
+    // ============================================================
     class PolygonMC {
         constructor() {
             this.expr = 'x*x+y*y+z*z-0.25';
-            this.parser = new ExprParser(this.expr);
+            this.parser = new SafeParser(this.expr);
             this.tris = [];
         }
 
@@ -152,7 +150,7 @@
             return {
                 id: 'polygonmc',
                 name: 'Polygon MC',
-                color1: '#2d8cff',
+                color1: '#2d8cff',   // 您想要的颜色，可随意修改
                 color2: '#1b5fbf',
                 blocks: [
                     {
@@ -200,7 +198,7 @@
 
         setFunc(args) {
             this.expr = args.F;
-            this.parser = new ExprParser(this.expr);
+            this.parser = new SafeParser(this.expr);
             this.tris = [];
         }
 
@@ -232,7 +230,6 @@
             center[0] /= points.length;
             center[1] /= points.length;
             center[2] /= points.length;
-
             const base = points.map(p => {
                 const r = [p[0] - center[0], p[1] - center[1], p[2] - center[2]];
                 const proj = this.projectAxis(r, normal);
@@ -264,7 +261,6 @@
             const step = 2 / (N - 1);
             const lin = [];
             for (let i = 0; i < N; i++) lin[i] = -1 + i * step;
-
             const fn = this.eval.bind(this);
             const edges = [
                 [0,1],[0,2],[0,4],
@@ -274,42 +270,43 @@
                 [4,5],[4,6],
                 [5,7],[6,7]
             ];
-
             const tris = [];
-            for (let i = 0; i < N - 1; i++)
-            for (let j = 0; j < N - 1; j++)
-            for (let k = 0; k < N - 1; k++) {
-                const x = lin[i], x1 = lin[i+1];
-                const y = lin[j], y1 = lin[j+1];
-                const z = lin[k], z1 = lin[k+1];
-                const pts = [
-                    [x,y,z], [x,y,z1], [x,y1,z], [x,y1,z1],
-                    [x1,y,z], [x1,y,z1], [x1,y1,z], [x1,y1,z1]
-                ];
-                const val = pts.map(p => fn(p[0], p[1], p[2]));
-                let pos = false, neg = false;
-                for (let v of val) {
-                    if (v < 0) neg = true;
-                    else pos = true;
-                }
-                if (!(pos && neg)) continue;
-
-                const poly = [];
-                for (let e = 0; e < 12; e++) {
-                    const a = edges[e][0], b = edges[e][1];
-                    const va = val[a], vb = val[b];
-                    if (va * vb < 0) {
-                        poly.push(this.interp(pts[a], pts[b], va, vb));
+            for (let i = 0; i < N-1; i++) {
+                for (let j = 0; j < N-1; j++) {
+                    for (let k = 0; k < N-1; k++) {
+                        const x = lin[i], x1 = lin[i+1];
+                        const y = lin[j], y1 = lin[j+1];
+                        const z = lin[k], z1 = lin[k+1];
+                        const pts = [
+                            [x,y,z], [x,y,z1], [x,y1,z], [x,y1,z1],
+                            [x1,y,z], [x1,y,z1], [x1,y1,z], [x1,y1,z1]
+                        ];
+                        const val = pts.map(p => fn(p[0], p[1], p[2]));
+                        let pos = false, neg = false;
+                        for (let v of val) {
+                            if (v < 0) neg = true;
+                            else pos = true;
+                            if (pos && neg) break;
+                        }
+                        if (!(pos && neg)) continue;
+                        const poly = [];
+                        for (let e = 0; e < 12; e++) {
+                            const a = edges[e][0], b = edges[e][1];
+                            const va = val[a], vb = val[b];
+                            if (va * vb < 0) {
+                                poly.push(this.interp(pts[a], pts[b], va, vb));
+                            }
+                        }
+                        if (poly.length < 3) continue;
+                        const normal = [
+                            poly[1][0] - poly[0][0],
+                            poly[1][1] - poly[0][1],
+                            poly[1][2] - poly[0][2]
+                        ];
+                        const sorted = this.sortPoly(poly, normal);
+                        tris.push(...this.triangulate(sorted));
                     }
                 }
-                if (poly.length < 3) continue;
-                const normal = [
-                    poly[1][0] - poly[0][0],
-                    poly[1][1] - poly[0][1],
-                    poly[1][2] - poly[0][2]
-                ];
-                const sorted = this.sortPoly(poly, normal);
-                tris.push(...this.triangulate(sorted));
             }
             this.tris = tris;
         }
